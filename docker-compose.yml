@@ -1,0 +1,155 @@
+version: "3.8"
+
+networks:
+  ozea-network:
+    driver: bridge
+
+volumes:
+  mysql_data:
+  redis_data:
+  grafana_data:
+  prom_data:
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: ozea-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+    command: >
+      --default-authentication-plugin=mysql_native_password
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./Back/back/database.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -p$${MYSQL_ROOT_PASSWORD} --silent"]
+      interval: 20s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    ports:
+      - "3307:3306"
+    networks: [ozea-network]
+
+  redis:
+    image: redis:7.2
+    container_name: ozea-redis
+    command: >
+      redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    ports:
+      - "6379:6379"
+    networks: [ozea-network]
+
+  # Blue/Green 백엔드 (둘 다 내부 포트만 노출)
+  backend-blue:
+    build:
+      context: ./Back/back
+      dockerfile: Dockerfile.multi   # ← 아래 1-② 멀티스테이지 Dockerfile 사용
+    container_name: ozea-backend-blue
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
+      JDBC_DRIVER: ${JDBC_DRIVER:-net.sf.log4jdbc.sql.jdbcapi.DriverSpy}
+      JDBC_URL: ${JDBC_URL}
+      JDBC_USERNAME: ${JDBC_USERNAME}
+      JDBC_PASSWORD: ${JDBC_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      KAKAO_API_KEY: ${KAKAO_API_KEY}
+      KAKAO_REDIRECT_URI: ${KAKAO_REDIRECT_URI}
+      MAIL_HOST: ${MAIL_HOST}
+      MAIL_PORT: ${MAIL_PORT}
+      MAIL_USERNAME: ${MAIL_USERNAME}
+      MAIL_PASSWORD: ${MAIL_PASSWORD}
+      MAIL_SMTP_AUTH: ${MAIL_SMTP_AUTH:-true}
+      MAIL_SMTP_STARTTLS: ${MAIL_SMTP_STARTTLS:-true}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRATION: ${JWT_EXPIRATION:-3600000}
+      JWT_REFRESH_EXPIRATION: ${JWT_REFRESH_EXPIRATION:-86400000}
+      JWT_ISSUER: ${JWT_ISSUER:-ozea}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-ozea-users}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+    depends_on:
+      mysql: { condition: service_healthy }
+      redis: { condition: service_started }
+    expose: ["8080"]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/api/monitoring/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    networks: [ozea-network]
+    profiles: ["production"]
+
+  backend-green:
+    image: ${BACKEND_IMAGE:-ozea/backend:latest}  # 필요시 이미지로 전환 가능
+    container_name: ozea-backend-green
+    environment:
+      <<: *{ }  # 위와 동일 변수 세트 사용 권장 (필요시 반복 선언)
+    depends_on:
+      mysql: { condition: service_healthy }
+      redis: { condition: service_started }
+    expose: ["8080"]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/api/monitoring/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    networks: [ozea-network]
+    profiles: ["production"]
+
+  # Nginx가 백엔드(blue/green)를 라우팅
+  frontend:
+    image: nginx:1.27
+    container_name: ozea-frontend
+    volumes:
+      - ./Front/frontend/dist:/usr/share/nginx/html:ro
+      - ./Front/frontend/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - backend-blue
+    ports:
+      - "80:80"
+    networks: [ozea-network]
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: ozea-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=15d
+      - --web.enable-lifecycle
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prom_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks: [ozea-network]
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: ozea-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GF_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GF_ADMIN_PASS:-admin}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./monitoring/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    networks: [ozea-network]

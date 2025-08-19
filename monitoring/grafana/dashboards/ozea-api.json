@@ -1,0 +1,46 @@
+{
+  "id": null,
+  "title": "OZEA - API Overview",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Backend UP",
+      "datasource": "Prometheus",
+      "targets": [
+        { "expr": "sum(up{job=\"ozea-backend\"})", "legendFormat": "instances" }
+      ],
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 }
+    },
+    {
+      "type": "timeseries",
+      "title": "HTTP Requests (rate 1m) by URI",
+      "datasource": "Prometheus",
+      "targets": [
+        { "expr": "sum(rate(http_server_requests_seconds_count[1m])) by (uri,status)", "legendFormat": "{{uri}} {{status}}" }
+      ],
+      "gridPos": { "x": 0, "y": 4, "w": 24, "h": 8 }
+    },
+    {
+      "type": "timeseries",
+      "title": "JVM Memory Used",
+      "datasource": "Prometheus",
+      "targets": [
+        { "expr": "jvm_memory_used_bytes", "legendFormat": "{{area}} {{id}}" }
+      ],
+      "gridPos": { "x": 0, "y": 12, "w": 12, "h": 8 }
+    },
+    {
+      "type": "timeseries",
+      "title": "GC Count",
+      "datasource": "Prometheus",
+      "targets": [
+        { "expr": "sum(rate(jvm_gc_pause_seconds_count[5m]))", "legendFormat": "gc" }
+      ],
+      "gridPos": { "x": 12, "y": 12, "w": 12, "h": 8 }
+    }
+  ]
+}

@@ -1,0 +1,48 @@
+services:
+  # 개발 환경에서는 Redis 제외 (실제 사용 안함)
+  redis:
+    profiles:
+      - production
+
+  # 개발 환경에서는 Prometheus/Grafana 제외
+  prometheus:
+    profiles:
+      - production
+
+  grafana:
+    profiles:
+      - production
+
+  # 개발 환경에서는 백엔드 하나만 실행
+  backend-green:
+    profiles:
+      - production
+
+  # 개발용 백엔드 설정
+  backend-blue:
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      JDBC_DRIVER: net.sf.log4jdbc.sql.jdbcapi.DriverSpy
+      JDBC_URL: jdbc:log4jdbc:mysql://mysql:3306/kongzea?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true&useUnicode=true&characterEncoding=utf8
+      JDBC_USERNAME: root
+      JDBC_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      # 개발용 포트 매핑
+    ports:
+      - "8080:8080"
+    # Tomcat 컨테이너 기반으로 실행 (이미 Dockerfile에서 설정됨)
+    command: ["catalina.sh", "run"]
+
+  # 개발용 프론트엔드 설정
+  frontend:
+    build:
+      context: ./Front/frontend
+      target: dev-stage
+    ports:
+      - "5173:5173"
+    volumes:
+      # 소스 코드 변경 시 자동 리로드
+      - ./Front/frontend/src:/app/src
+      - ./Front/frontend/public:/app/public
+    command: ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+    environment:
+      - VITE_API_BASE_URL=/api

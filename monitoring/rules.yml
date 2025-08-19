@@ -1,0 +1,30 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 30s
+  external_labels:
+    cluster: ozea
+
+rule_files:
+  - 'rules.yml'
+
+scrape_configs:
+  - job_name: 'ozea-backend'
+    metrics_path: /api/monitoring/metrics
+    static_configs:
+      - targets:
+          - backend-blue:8080
+          - backend-green:8080
+        labels:
+          app: ozea-backend
+
+  - job_name: 'nginx'
+    static_configs:
+      - targets: ['nginx-exporter:9113']
+
+  - job_name: 'mysql'
+    static_configs:
+      - targets: ['mysqld-exporter:9104']
+
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['prometheus:9090']

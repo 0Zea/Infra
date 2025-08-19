@@ -1,0 +1,6 @@
+apiVersion: 1
+providers:
+  - name: "OZEA Dashboards"
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards
