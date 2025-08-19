@@ -1,0 +1,25 @@
+services:
+  backend-blue:
+    container_name: ozea-backend-blue
+    build:
+      context: ../Back/back
+      dockerfile: Dockerfile
+    environment:
+      TZ: Asia/Seoul
+      JDBC_URL: ${JDBC_URL}
+      JDBC_USERNAME: ${JDBC_USERNAME}
+      JDBC_PASSWORD: ${JDBC_PASSWORD}
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      KAKAO_API_KEY: ${KAKAO_API_KEY}
+      KAKAO_REDIRECT_URI: ${KAKAO_REDIRECT_URI}
+      JWT_SECRET: ${JWT_SECRET}
+    env_file:
+      - ../.env
+    ports:
+      - "8080:8080"
+    depends_on:
+      - mysql
+      - redis
+    networks: [ozea-net]
